@@ -6,6 +6,7 @@ import datasql
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import fetchindex
 
 class IndexValue:
 	def __init__(self, td, value, divisor, point, newvalue):
@@ -215,6 +216,50 @@ def draw(idxvalues):
 	#plt.xticks(x, xlabel)
 	plt.plot(x, y)
 	plt.show()
+
+def drawboth(idxvalues, idxdatas):
+	ordervalues_new = sorted(idxvalues, key=lambda d:d.td)
+	ordervalues_orig = sorted(idxdatas, key=lambda d:d.td)
+	#横坐标数据
+	x = []
+	#新的指数数据
+	y1 = []
+	#原始指数数据
+	y2 = []
+	#横坐标标签
+	xlabel = []
+	size = len(ordervalues_new)
+	if size > len(ordervalues_orig):
+		size = len(ordervalues_orig)
+		td = ordervalues_orig[0].td
+		for i in range(len(ordervalues_new)):
+			if td == ordervalues_new[i].td:
+				break
+		if i < len(ordervalues_new):
+			ordervalues_new = ordervalues_new[i:]
+	else
+		size = len(ordervalues_orig)
+		td = ordervalues_orig[0].td
+		for i in range(len(ordervalues_orig)):
+			if td == ordervalues_orig[i].td:
+				break
+		if i < len(ordervalues_orig):
+			ordervalues_orig = ordervalues_orig[i:]
+	
+	for i in range(size):
+		x.append(i+1)
+		y1.append(ordervalues_new[i].point)
+		y2.append(ordervalues_orig[i].price)
+		xlabel.append(ordervalues_new[i].td)
+	
+	fig,ax = plt.subplots()
+	#设置横坐标
+	ax.set_xticks(x)
+	ax.set_xticklabels(xlabel, rotation=40)
+	#plt.xticks(x, xlabel)
+	plt.plot(x, y1)
+	plt.plot(x, y2)
+	plt.show()
 	
 def output(idxvalues, filename='./data/idxvaluex.csv'):
 	header = "TradingDay,Value,Divisor,Point,Option\n"
@@ -233,6 +278,10 @@ def output(idxvalues, filename='./data/idxvaluex.csv'):
 		fileobj.close()
 	
 if __name__ == "__main__":
+	#获得指数原始数据
+	idxdf = fetchindex.getIndexData()
+	idxdatas = fetchindex.getListData(idxdf)
+
 	#获得月度数据
 	#filename = './data/monthlydata.csv'
 	filename = './data/monthlydata.pkl'

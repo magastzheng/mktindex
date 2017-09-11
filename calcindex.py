@@ -8,13 +8,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class IndexValue:
-	def __init__(self, td, value, divisor, point):
+	def __init__(self, td, value, divisor, point, newvalue):
 		self.td = td
 		self.value = value
 		self.divisor = divisor
 		self.point = point
+		self.newvalue = newvalue
 	def __repr__(self):
-		return repr((self.td, self.value, self.divisor, self.point))
+		return repr((self.td, self.value, self.divisor, self.point, self.newvalue))
 	
 #获得月度数据
 def getMonthlyData():
@@ -36,8 +37,16 @@ def getShares(df, mktcap=10000.0):
 
 #使用上期个股数量更新本期
 def setShares(newdf, olddf):
-	tempdf = olddf.loc[:, ['SecuCode', 'Shares']]
-	df = pd.merge(newdf, tempdf, on='SecuCode', how='left')
+	#由于本期可能有些股票已近退市，如果直接这样处理，会导致这些退市股票消失掉，市值减少
+	#多期累积之后，这部分损失会很大
+	#这里先把该股票使用上期替代
+	tempdf = olddf.loc[:, ['SecuCode', 'ClosePrice', 'Shares']]
+	df = pd.merge(newdf, tempdf, on='SecuCode', how='outer', suffixes=('_left', '_right'))
+	#使用上期收盘价填充本期消失的股票
+	df['ClosePrice_left'] = df['ClosePrice_left'].fillna(df['ClosePrice_right'])
+	#本期新股设置股数为0
+	df['Shares'] = df['Shares'].fillna(0)
+	df.rename(columns={'ClosePrice_left': 'ClosePrice'}, inplace=True)
 	return df
 	
 def getIndexPrice(df, lblprice='ClosePrice', lblshare='Shares', lblmktcap='mktcap'):
@@ -51,7 +60,7 @@ def getIndexPrice(df, lblprice='ClosePrice', lblshare='Shares', lblmktcap='mktca
 	#shares = df['Shares'].values.tolist()
 	#prices = df['ClosePrice'].values.tolist()
 	#df['mktcap'] = df.apply(lambda x: float(x['ClosePrice'])*x['Shares'], axis=1)
-	df.loc[:, lblmktcap] = df.apply(lambda x: float(x[lblprice])*x[lblshare], axis=1)
+	df.loc[:, lblmktcap] = df.apply(lambda x: float(x[lblprice])*float(x[lblshare]), axis=1)
 	total = df[lblmktcap].sum()
 	return float(total)
 
@@ -73,13 +82,14 @@ def equalWeightByTradingDay(df, mktcap=10000.0, base=1000):
 		tempdf = df[df['TradingDay'] == td]
 		period = None
 		pval = 0.0
-		
 		if i == 0:
+			poldval = pval
 			period = getShares(tempdf, mktcap)
 			pval = getIndexPrice(df=period, lblprice='ClosePrice', lblshare='Shares', lblmktcap='mktcap')
 			point = base
 			divisor = pval / base
 		else:
+			poldval = pval
 			period = setShares(tempdf, predf)
 			pval = getIndexPrice(df=period, lblprice='ClosePrice', lblshare='Shares', lblmktcap='mktcap')
 			point = pval/divisor
@@ -87,10 +97,12 @@ def equalWeightByTradingDay(df, mktcap=10000.0, base=1000):
 			size = len(period)
 			eachcap = pval/size
 			#重新等权所有股票
+			period = tempdf
 			period.loc[:, 'Shares'] = period.apply(lambda x:eachcap/float(x['ClosePrice']), axis=1)	
-
+		
+		#由于使用新市值等权处理，两期市值相等
 		predf = period
-		iv = IndexValue(td, pval, divisor, point)
+		iv = IndexValue(td, pval, divisor, point, pval)
 		idxvalues.append(iv)
 		
 	return idxvalues
@@ -106,12 +118,14 @@ def equalShareByTradingDay(df, shares=1000, base=1000):
 	predf = None
 	divisor = 0.0
 	point = 0.0
+	poldval = 0.0
+	
 	for i in range(len(tds)):
 		td = tds[i]
 		tempdf = df[df['TradingDay'] == td]
 		period = None
 		pval = 0.0
-		
+
 		if i == 0:
 			period = tempdf
 			period.loc[:, "Shares"] = shares
@@ -125,12 +139,16 @@ def equalShareByTradingDay(df, shares=1000, base=1000):
 			point = pval/divisor
 				
 			#重新分配股数-每支股票持有相同股数
+			#由于新股的加入，导致重新分配股数出现变化
 			totalprice = float(period['ClosePrice'].sum())
-			eachshare = pval / totalprice
-			period.loc[:, "Shares"] = eachshare
+			shares = pval / totalprice
+			#print(td, pval, totalprice, shares, "\n")
+			period = tempdf
+			period.loc[:, "Shares"] = shares
 			
+		#重新分配股数时，使用总市值除以总价格，也就是说两期总市值不变
 		predf = period
-		iv = IndexValue(td, pval, divisor, point)
+		iv = IndexValue(td, pval, divisor, point, shares)
 		idxvalues.append(iv)
 		
 	return idxvalues
@@ -150,7 +168,7 @@ def mktcapByTradingDay(df, base=1000):
 		tempdf = df[df['TradingDay'] == td]
 		period = None
 		pval = 0.0
-		
+		pnewval = 0.0
 		if i == 0:
 			period = tempdf
 			period.loc[:, "Shares"] = period.loc[:, "AFloats"]
@@ -158,18 +176,22 @@ def mktcapByTradingDay(df, base=1000):
 			pval = getIndexPrice(df=period, lblprice='ClosePrice', lblshare='Shares', lblmktcap='mktcap')
 			point = base
 			divisor = pval / base
+			pnewval = pval
 		else:
 			period = setShares(tempdf, predf)
 			pval = getIndexPrice(df=period, lblprice='ClosePrice', lblshare='Shares', lblmktcap='mktcap')
 			point = pval/divisor
 				
 			#重新调整股数，使用流通股在平衡，此时需要调整除数divisor
-			#newpval = getIndexPrice(df=period, lblprice='ClosePrice', lblshare='AFloats', lblmktcap='nmktcap')
-			#divisor = newpval / point
-			#period.loc[:, "Shares"] = period.loc[:, "AFloats"]
-			
+			period = tempdf
+			pnewval = getIndexPrice(df=period, lblprice='ClosePrice', lblshare='AFloats', lblmktcap='nmktcap')
+			divisor = pnewval / point
+			period.loc[:, "Shares"] = period.loc[:, "AFloats"]
+		
+		#这种方式存在一定问题，理论上投资不应该需要追加投资，而仅仅涉及到资金的重新分配
+		#但是这种方式需要撤回或者追加资金
 		predf = period
-		iv = IndexValue(td, pval, divisor, point)
+		iv = IndexValue(td, pval, divisor, point, pnewval)
 		idxvalues.append(iv)
 		
 	return idxvalues
@@ -194,18 +216,41 @@ def draw(idxvalues):
 	plt.plot(x, y)
 	plt.show()
 	
+def output(idxvalues, filename='./data/idxvaluex.csv'):
+	header = "TradingDay,Value,Divisor,Point,Option\n"
+	fmt = "{0},{1},{2},{3},{4}\n"
+	#打开可读写文件，并写入新内容
+	fileobj = open(filename, 'w+')
+	try:
+		fileobj.write(header)
+		ordervalues = sorted(idxvalues, key=lambda d:d.td)
+		for idx in ordervalues:
+			line = fmt.format(idx.td, idx.value, idx.divisor, idx.point, idx.newvalue)
+			fileobj.write(line)
+	except Exception:
+		print("Error: exception to write file.\n")
+	finally:
+		fileobj.close()
+	
 if __name__ == "__main__":
 	#获得月度数据
+	#filename = './data/monthlydata.csv'
+	filename = './data/monthlydata.pkl'
 	#df = getMonthlyData()
 	#df.to_csv("./data/monthlydata.csv", encoding='utf8')
-	df = pd.read_csv("./data/monthlydata.csv")
+	#df = pd.read_csv("./data/monthlydata.csv")
+	
+	#存为pickle格式
+	#df.to_pickle(filename)
+	df = pd.read_pickle(filename)
 	#计算指数
 	#等权重
-	#idxvalues = equalWeightByTradingDay(df)
+	idxvalues = equalWeightByTradingDay(df)
 	#等股份
 	#idxvalues = equalShareByTradingDay(df)
 	#等市值
-	idxvalues = mktcapByTradingDay(df)
-	print(idxvalues)
+	#idxvalues = mktcapByTradingDay(df)
+	#print(idxvalues)
+	output(idxvalues)
 	#画图
 	draw(idxvalues)

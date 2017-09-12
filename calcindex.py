@@ -217,7 +217,7 @@ def draw(idxvalues):
 	plt.plot(x, y)
 	plt.show()
 
-def drawboth(idxvalues, idxdatas):
+def drawboth(idxvalues, idxdatas, start='20041231'):
 	ordervalues_new = sorted(idxvalues, key=lambda d:d.td)
 	ordervalues_orig = sorted(idxdatas, key=lambda d:d.td)
 	#横坐标数据
@@ -237,7 +237,7 @@ def drawboth(idxvalues, idxdatas):
 				break
 		if i < len(ordervalues_new):
 			ordervalues_new = ordervalues_new[i:]
-	else
+	else:
 		size = len(ordervalues_orig)
 		td = ordervalues_orig[0].td
 		for i in range(len(ordervalues_orig)):
@@ -257,8 +257,12 @@ def drawboth(idxvalues, idxdatas):
 	ax.set_xticks(x)
 	ax.set_xticklabels(xlabel, rotation=40)
 	#plt.xticks(x, xlabel)
-	plt.plot(x, y1)
-	plt.plot(x, y2)
+	plt.grid()
+	
+	plt.plot(x, y1, "go-", label="my index")
+	plt.plot(x, y2, "rs", label="hs300")
+	plt.legend(loc="center")
+	
 	plt.show()
 	
 def output(idxvalues, filename='./data/idxvaluex.csv'):
@@ -279,9 +283,14 @@ def output(idxvalues, filename='./data/idxvaluex.csv'):
 	
 if __name__ == "__main__":
 	#获得指数原始数据
-	idxdf = fetchindex.getIndexData()
+	idxfile = './data/indexmonthlydata.pkl'
+	#idxdf = fetchindex.getIndexData()
+	idxdf = pd.read_pickle(idxfile)
+	idxdf.to_pickle(idxfile)
+	
+	#DataFrame转换为列表
 	idxdatas = fetchindex.getListData(idxdf)
-
+	
 	#获得月度数据
 	#filename = './data/monthlydata.csv'
 	filename = './data/monthlydata.pkl'
@@ -294,12 +303,14 @@ if __name__ == "__main__":
 	df = pd.read_pickle(filename)
 	#计算指数
 	#等权重
-	idxvalues = equalWeightByTradingDay(df)
+	#idxvalues = equalWeightByTradingDay(df)
 	#等股份
 	#idxvalues = equalShareByTradingDay(df)
 	#等市值
-	#idxvalues = mktcapByTradingDay(df)
+	idxvalues = mktcapByTradingDay(df)
 	#print(idxvalues)
 	output(idxvalues)
 	#画图
-	draw(idxvalues)
+	#draw(idxvalues)
+	#画新指数和沪深300
+	drawboth(idxvalues, idxdatas)

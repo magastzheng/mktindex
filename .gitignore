@@ -31,3 +31,5 @@ _ReSharper*/
 *swp
 *.pyc
 *.csv
+*swo
+*pkl
